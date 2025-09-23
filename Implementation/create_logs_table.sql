@@ -1,5 +1,5 @@
 sudo -u postgres psql <<'SQL'
-CREATE USER soc_user WITH PASSWORD 'ChangeMe_Strong!';
+CREATE USER soc_user WITH PASSWORD 'xxxxxxxxxx';
 CREATE DATABASE soc_logs OWNER soc_user;
 \c soc_logs
 CREATE EXTENSION IF NOT EXISTS pgcrypto;

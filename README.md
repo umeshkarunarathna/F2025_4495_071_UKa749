@@ -43,7 +43,7 @@ F2025_4495_071_UKa749/
 │ ├── etl_wazuh_to_pg.py # ETL script (Wazuh -> PostgreSQL)
 │ ├── main.py # FastAPI app (NL -> SQL)
 │ ├── create_logs_table.sql # Postgres schema
-│ ├── 
+│ ├── ab
 │ └── ...
 │
 ├── README.md

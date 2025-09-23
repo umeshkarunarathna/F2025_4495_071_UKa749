@@ -33,6 +33,8 @@ The assistant enables analysts to query security events (e.g., SSH failed logins
 
 ## Repository Structure
 
+
+
 F2025_4495_071_UKa749/
 │
 ├── Documents/ # Project reports (Proposal, Progress Reports, Midterm, Final Report)
@@ -48,3 +50,5 @@ F2025_4495_071_UKa749/
 │
 ├── README.md
 └── Misc/
+
+

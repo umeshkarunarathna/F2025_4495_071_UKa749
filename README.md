@@ -35,21 +35,8 @@ The assistant enables analysts to query security events (e.g., SSH failed logins
 
 
 
-F2025_4495_071_UKa749/
-│
-├── Documents/ # Project reports (Proposal, Progress Reports, Midterm, Final Report)
-│ ├── Project_UKa749_Report1.pdf
-│ └── ...
-│
-├── Implementation/ # Source code and scripts
-│ ├── etl_wazuh_to_pg.py # ETL script (Wazuh -> PostgreSQL)
-│ ├── main.py # FastAPI app (NL -> SQL)
-│ ├── create_logs_table.sql # Postgres schema
-│ ├── ab
-│ └── ...
-│
-├── README.md
-└── Misc/
+<img width="721" height="396" alt="image" src="https://github.com/user-attachments/assets/8c5205d7-e1cd-4393-b9ac-c501041d224e" />
+
 
 ---
 

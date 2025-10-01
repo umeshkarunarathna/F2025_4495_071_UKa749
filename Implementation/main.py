@@ -17,7 +17,7 @@ PGDB   = os.getenv("PGDATABASE", "soc_logs")
 PGUSER = os.getenv("PGUSER", "soc_user")
 PGPW   = os.getenv("PGPASSWORD", "")
 
-OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://10.0.0.12:11434")
+OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral")
 
 MAX_ROWS = int(os.getenv("MAX_ROWS", "200"))
@@ -45,11 +45,30 @@ logs(
 )
 
 Rules:
-- Use only table logs; do NOT reference any other tables or CTEs.
-- For ssh events, filter with: rule_desc ILIKE '%sshd%'.
-- Limit results to {limit} rows unless user asks for aggregates only.
+- Always include a time filter if the user gives one; otherwise default to last {hours} hours using: ts >= now() - interval '{hours} hours'.
+- Limit results to {limit} rows unless user explicitly requests more.
+- Only add time filters (ts >= now() - interval 'X hours/days') if the user explicitly mentions a time window.
 - SELECT-only. Do not use INSERT/UPDATE/DELETE/ALTER/DROP/TRUNCATE.
 - Prefer simple SELECT with WHERE/GROUP BY/ORDER BY.
+- Return only one SQL SELECT (no prose, no comments).
+- If the user does not specify columns, default to:
+	SELECT id, ts, agent_name, src_ip, user_name, rule_level, rule_id, rule_desc
+- If the user asks for counts/tops/most, use COUNT(*) AS count, ORDER BY count DESC, and a sensible GROUP BY.
+- When the user says success / successful, include rule_desc ILIKE '%success%' and exclude failures with rule_desc NOT ILIKE '%fail%'.
+- When the user says failed / failure / invalid / denied, include (rule_desc ILIKE '%fail%' OR '%invalid%' OR '%denied%').
+- Always keep rule_desc ILIKE '%sshd%' for SSH-related requests.
+- Never use JSON paths (full_log->>…) unless explicitly requested. Prefer the flattened columns (ts, agent_name, src_ip, user_name, rule_level, rule_id, rule_desc).
+- Use rule_desc for keyword filtering. When the user mentions terms like authentication, ssh, sudo, login, failed, success, anomaly, interpret them as rule_desc ILIKE '%term%' conditions (combine with AND/OR as needed).
+- Avoid JSON paths (full_log->>…) unless explicitly asked by the user.
+- Avoid guessing severities. Do not use rule_level < 7 or similar unless the user asks for “high severity”.
+- Preferred mappings:
+	Authentication events: rule_desc ILIKE '%auth%' OR rule_desc ILIKE '%PAM%' OR rule_desc ILIKE '%sshd%'
+	SSH events: rule_desc ILIKE '%sshd%'
+	Failed logins: rule_desc ILIKE '%fail%' OR rule_desc ILIKE '%invalid%' OR rule_desc ILIKE '%denied%'
+	Success logins: rule_desc ILIKE '%success%'
+	sudo events: rule_desc ILIKE '%sudo%'
+	agent lifecycle: rule_desc ILIKE '%Wazuh agent%'
+- Always prefer flattened columns: ts, agent_name, src_ip, user_name, rule_level, rule_id, rule_desc.
 - If user asks for “top” or “most”, use ORDER BY DESC with LIMIT.
 - When filtering by substrings in rule_desc, use ILIKE '%term%'.
 """.strip().format(hours=DEFAULT_WINDOW_HOURS, limit=MAX_ROWS)
@@ -80,7 +99,7 @@ def call_ollama_for_sql(question: str) -> str:
         ],
         "stream": False
     }
-    r = requests.post(url, json=payload, timeout=300)
+    r = requests.post(url, json=payload, timeout=60)
     r.raise_for_status()
     data = r.json()
     text = data.get("message", {}).get("content", "")

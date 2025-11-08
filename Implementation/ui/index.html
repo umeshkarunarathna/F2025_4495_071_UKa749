@@ -1,39 +1,44 @@
 <!doctype html>
 <html lang="en">
-
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SOC Assistant — Query & Charts</title>
   <link rel="stylesheet" href="css/styles.css">
-  <!-- Chart.js CDN -->
+   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
-
 <body>
-  <script src="script/app.js" defer></script>
+  <script src="script/app.js?v=3" defer></script>
   <div class="wrap">
     <h1>LLM-Powered SOC Assistant</h1>
-    <div class="sub">Ask in natural language. We’ll generate SQL, show rows, and render charts when your prompt asks for
-      them.</div>
+    <div class="sub">Ask in natural language. We’ll generate SQL, show rows, and render charts when your prompt asks for them.</div>
 
     <div class="card section">
       <div class="row">
-        <textarea id="q"
-          placeholder="e.g. Show failed vs successful sshd attempts for agent Kali4495 in the last 24 hours with a percentage chart"></textarea>
+        <textarea id="q" placeholder="e.g. Show failed vs successful sshd attempts for agent Kali4495 in the last 24 hours with a percentage chart"></textarea>
         <div class="toolbar">
           <button class="btn" id="askBtn">Ask</button>
+	  <div id="loading" class="loading" style="display:none">
+	  <div class="spinner"></div>
+  	  <span>Processing your query...</span>
+	  </div>
           <div class="btn-row">
-            <button class="btn-ghost" id="insightsBtn">Quick Insight: Top src_ip (24h)</button>
+	    <button class="btn-ghost" id="insightsBtn">Quick Insight: Top src_ip (24h)</button>
             <button class="btn-ghost" id="btnChartByHour">Failed sshd by hour (24h)</button>
-            <button class="btn-ghost" id="btnChartTopIPs">Top src_ip for failed sshd (24h)</button>
-          </div>
+            <button class="btn-ghost" id="btnChartTopIPs">Top src_ip for failed sshd (24h)</button>          
+	</div>
           <div class="btn-row">
-            <button class="btn-ghost" id="fetchBtn">Fetch latest logs</button>
+	    <button class="btn-reset" id="resetBtn">Reset</button>
+	    <button class="btn-fetch" id="fetchBtn">Fetch Latest Logs</button>
             <small id="fetchMsg" class="muted"></small>
-            <button class="btn-ghost" id="resetBtn">Reset</button>
           </div>
         </div>
+	<div class="muted" id="etlStatus" style="margin-top:8px;">
+	  <span>Last updated: <b id="lastUpdated">—</b></span>
+  		&nbsp;•&nbsp;
+  	  <span>Next update: <b id="nextUpdate">—</b></span>
+	</div>
       </div>
 
       <div class="chips">
@@ -60,14 +65,13 @@
         <h3>Charts</h3>
         <div class="chart-wrap">
           <div class="chart-toolbar">
-            <button class="btn-ghost" id="btnUseServerChart">Use server-provided chart (if available)</button>
+	    <button class="btn-ghost" id="btnUseServerChart">Use server-provided chart (if available)</button>
             <button class="btn-ghost" id="btnPieFailedVsSuccess">Pie: failed vs successful (server chart)</button>
-          </div>
+	  </div>
           <canvas id="chart"></canvas>
         </div>
       </div>
     </div>
   </div>
 </body>
-
 </html>

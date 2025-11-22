@@ -4,43 +4,87 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SOC Assistant — Query & Charts</title>
+
+  <!-- Main styles -->
   <link rel="stylesheet" href="css/styles.css">
-   <!-- Chart.js CDN -->
+
+  <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <script src="script/app.js?v=3" defer></script>
+  <!-- bump ?v to avoid browser cache issues when updating JS -->
+  <script src="script/app.js?v=5" defer></script>
+
   <div class="wrap">
     <h1>LLM-Powered SOC Assistant</h1>
-    <div class="sub">Ask in natural language. We’ll generate SQL, show rows, and render charts when your prompt asks for them.</div>
+    <div class="sub">
+      Ask in natural language. We’ll generate SQL, show rows, and render charts when your prompt asks for them.
+    </div>
 
+    <!-- Query + Controls Card -->
     <div class="card section">
       <div class="row">
-        <textarea id="q" placeholder="e.g. Show failed vs successful sshd attempts for agent Kali4495 in the last 24 hours with a percentage chart"></textarea>
+        <!-- Natural language question box -->
+        <textarea
+          id="q"
+          placeholder="e.g. Show high severity sshd login failures for agent Kali4495 in the last 24 hours with a comparison chart">
+        </textarea>
+
+        <!-- Right side toolbar -->
         <div class="toolbar">
+          <!-- Main Ask button + loading indicator -->
           <button class="btn" id="askBtn">Ask</button>
-	  <div id="loading" class="loading" style="display:none">
-	  <div class="spinner"></div>
-  	  <span>Processing your query...</span>
-	  </div>
+          <div id="loading" class="loading" style="display:none">
+            <div class="spinner"></div>
+            <span>Processing your query...</span>
+          </div>
+
+          <!-- Quick chart helpers -->
           <div class="btn-row">
-	    <button class="btn-ghost" id="insightsBtn">Quick Insight: Top src_ip (24h)</button>
+            <button class="btn-ghost" id="insightsBtn">Quick Insight: Top src_ip (24h)</button>
             <button class="btn-ghost" id="btnChartByHour">Failed sshd by hour (24h)</button>
-            <button class="btn-ghost" id="btnChartTopIPs">Top src_ip for failed sshd (24h)</button>          
-	</div>
+            <button class="btn-ghost" id="btnChartTopIPs">Top src_ip for failed sshd (24h)</button>
+          </div>
+
+          <!-- Reset + ETL fetch -->
           <div class="btn-row">
-	    <button class="btn-reset" id="resetBtn">Reset</button>
-	    <button class="btn-fetch" id="fetchBtn">Fetch Latest Logs</button>
+            <button class="btn-reset" id="resetBtn">Reset</button>
+            <button class="btn-fetch" id="fetchBtn">Fetch Latest Logs</button>
             <small id="fetchMsg" class="muted"></small>
           </div>
         </div>
-	<div class="muted" id="etlStatus" style="margin-top:8px;">
-	  <span>Last updated: <b id="lastUpdated">—</b></span>
-  		&nbsp;•&nbsp;
-  	  <span>Next update: <b id="nextUpdate">—</b></span>
-	</div>
       </div>
 
+      <!-- NEW: Filter row (Agent, Time frame, Severity) -->
+      <div class="filter-row">
+        <div class="filter-group">
+          <label for="agentFilter" class="filter-label">Agent</label>
+          <select id="agentFilter">
+            <option value="">All agents</option>
+            <!-- Options are populated dynamically from /filters/agents -->
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="severityFilter" class="filter-label">Severity</label>
+          <select id="severityFilter">
+            <option value="">All severities</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ETL last/next status -->
+      <div class="muted" id="etlStatus" style="margin-top:8px;">
+        <span>Last updated: <b id="lastUpdated">—</b></span>
+        &nbsp;•&nbsp;
+        <span>Next update: <b id="nextUpdate">—</b></span>
+      </div>
+
+      <!-- Chips: example questions -->
       <div class="chips">
         <span class="chip">Show failed sshd logins in the last 24 hours</span>
         <span class="chip">Top source IPs for failed sshd logins (last 72 hours)</span>
@@ -48,11 +92,14 @@
         <span class="chip">Compare failed vs successful SSH for agent Kali4495 with a chart</span>
       </div>
 
+      <!-- Error + meta info -->
       <div id="err" class="err" style="display:none"></div>
       <div id="meta" class="meta" style="display:none"></div>
     </div>
 
+    <!-- Results + Charts -->
     <div class="grid" style="margin-top:16px">
+      <!-- SQL + rows -->
       <div class="card section">
         <h3>Generated SQL</h3>
         <pre id="sql" class="muted">—</pre>
@@ -60,14 +107,15 @@
         <div id="rows">—</div>
       </div>
 
-      <!-- charts card spans full width on desktop -->
+      <!-- Charts (full width on desktop via charts-span-2) -->
       <div class="card section charts-span-2">
         <h3>Charts</h3>
         <div class="chart-wrap">
           <div class="chart-toolbar">
-	    <button class="btn-ghost" id="btnUseServerChart">Use server-provided chart (if available)</button>
+            <button class="btn-ghost" id="btnSeverity24h">Severity distribution (last 24h)</button>
+            <button class="btn-ghost" id="btnUseServerChart">Use server-provided chart (if available)</button>
             <button class="btn-ghost" id="btnPieFailedVsSuccess">Pie: failed vs successful (server chart)</button>
-	  </div>
+          </div>
           <canvas id="chart"></canvas>
         </div>
       </div>

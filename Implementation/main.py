@@ -1,14 +1,16 @@
 import os
-import subprocess, shlex, textwrap, sys
+import subprocess
 import re
 import json
 import time
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Query
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
+from datetime import datetime, timedelta, timezone
 
 load_dotenv()
 
@@ -33,7 +35,6 @@ DEFAULT_WINDOW_HOURS = int(os.getenv("DEFAULT_WINDOW_HOURS", "24"))
 
 ETL_LAST_RUN_FILE = os.getenv("ETL_LAST_RUN_FILE", "/var/log/soc-etl/last_run.txt")
 CRON_SPEC = os.getenv("ETL_CRON_SPEC", "0 * * * *")  # top of each hour by default
-
 
 # -------------------------
 # Prompt / schema hint
@@ -92,6 +93,63 @@ KEYWORD → FILTER MAPPINGS (use rule_desc ILIKE unless the user asks otherwise)
 - Service start/stop:  (rule_desc ILIKE '%started%' OR rule_desc ILIKE '%stopped%')
 - Port scan:           rule_desc ILIKE '%scan%'
 
+Severity mappings:
+- Low severity: rule_level BETWEEN 0 AND 3
+- Medium severity: rule_level BETWEEN 4 AND 6
+- High severity: rule_level BETWEEN 7 AND 9
+- Critical severity: rule_level >= 10
+
+Agent filters:
+- When the question mentions an agent explicitly (for example,
+  "Agent: Kali4495", "Agent: CSIS4440", or "Agent: ip-172-31-38-27"),
+  ALWAYS filter using:
+
+    agent_name = '<value>'
+
+  even if the value looks like an IP address or hostname.
+- Never use src_ip for these “Agent” filters.
+- Only filter using src_ip when the user explicitly says "src_ip",
+  "source IP", or "IP address".
+
+
+IMPORTANT — BOOLEAN LOGIC FIX:
+- When matching failed logins, you MUST wrap the OR patterns inside parentheses:
+
+  (rule_desc ILIKE '%fail%' OR rule_desc ILIKE '%invalid%' OR rule_desc ILIKE '%denied%')
+
+This parentheses group MUST always appear as a unit when combined with agent_name,
+severity filters, or time filters. Never generate them without parentheses.
+
+Examples of correct grouping:
+
+WHERE rule_desc ILIKE '%sshd%'
+  AND agent_name = 'Kali4495'
+  AND (
+        rule_desc ILIKE '%fail%' OR
+        rule_desc ILIKE '%invalid%' OR
+        rule_desc ILIKE '%denied%'
+      )
+  AND rule_level BETWEEN 7 AND 9
+  AND ts >= now() - interval '24 hours'
+
+When combining AND and OR operators, ALWAYS use parentheses around the OR conditions
+to ensure correct boolean grouping. Never rely on implicit SQL operator precedence.
+
+
+If the user asks:
+- "high severity" → add WHERE rule_level BETWEEN 7 AND 9
+- "critical severity" → add WHERE rule_level >= 10
+- "low severity" → add WHERE rule_level BETWEEN 0 AND 3
+- "severity distribution" or "by severity" → group using:
+
+  CASE
+    WHEN rule_level BETWEEN 0 AND 3 THEN 'low'
+    WHEN rule_level BETWEEN 4 AND 6 THEN 'medium'
+    WHEN rule_level BETWEEN 7 AND 9 THEN 'high'
+    WHEN rule_level >= 10        THEN 'critical'
+    ELSE 'unknown'
+  END AS severity
+
 AGGREGATE PATTERN FOR “FAILED VS SUCCESSFUL SSH” (use this when user asks comparisons/percentages/graph):
 SELECT
   CASE
@@ -133,9 +191,9 @@ class AskResponse(BaseModel):
 # -------------------------
 # App + static UI
 # -------------------------
-app = FastAPI(title="LLM-Powered SOC Assistant (NL → SQL)", version="0.1")
-
 from fastapi.staticfiles import StaticFiles
+
+app = FastAPI(title="LLM-Powered SOC Assistant (NL → SQL)", version="0.1")
 app.mount("/ui", StaticFiles(directory="ui", html=True), name="ui")
 
 # -------------------------
@@ -164,10 +222,9 @@ def _build_failed_success_chart_from_rows(rows: list) -> ChartPayload | None:
     if not rows:
         return None
 
-    # normalize keys (case-insensitive)
-    def norm_key(k): return (k or "").strip().lower()
+    def norm_key(k): 
+        return (k or "").strip().lower()
 
-    # detect columns
     status_key = None
     count_key  = None
     for k in rows[0].keys():
@@ -184,19 +241,17 @@ def _build_failed_success_chart_from_rows(rows: list) -> ChartPayload | None:
         label = str(r.get(status_key) or "other").lower()
         try:
             c = float(r.get(count_key) or 0)
-        except:
+        except Exception:
             c = 0.0
         buckets[label] = buckets.get(label, 0.0) + c
 
     labels = []
     values = []
 
-    # Always put Failed, Successful first if present
     for lbl in ["failed", "successful"]:
         labels.append(lbl.capitalize())
         values.append(buckets.get(lbl, 0.0))
 
-    # Add 'Other' if any residual
     other_sum = sum(v for k, v in buckets.items() if k not in ("failed", "successful"))
     if other_sum > 0:
         labels.append("Other")
@@ -213,12 +268,51 @@ def _build_failed_success_chart_from_rows(rows: list) -> ChartPayload | None:
         percentages=percentages
     )
 
+def _write_last_run_now():
+    """
+    Update the last_run timestamp file in UTC when ETL is executed manually or by cron.
+    """
+    try:
+        os.makedirs(os.path.dirname(ETL_LAST_RUN_FILE), exist_ok=True)
+        with open(ETL_LAST_RUN_FILE, "w") as f:
+            f.write(datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    except Exception as e:
+        print(f"warn: cannot write last_run file: {e}")
+
+def _read_last_run_iso(path: str) -> str | None:
+    """
+    Read last_run timestamp from file, return ISO8601 string in UTC or None.
+    """
+    try:
+        with open(path, "r") as f:
+            s = f.read().strip()
+            try:
+                return datetime.fromisoformat(s).astimezone(timezone.utc).isoformat()
+            except Exception:
+                return None
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+def _next_run_iso(now_utc: datetime | None = None) -> str:
+    """
+    For CRON_SPEC '0 * * * *', next run = top of next hour.
+    If you later change CRON_SPEC, update this function accordingly.
+    """
+    now_utc = now_utc or datetime.now(timezone.utc)
+    nxt = (now_utc.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+    return nxt.isoformat()
+
 # -------------------------
 # ETL trigger
 # -------------------------
 @app.post("/etl/run")
 def etl_run(x_etl_token: str = Header(default="")):
-    # simple guard
+    """
+    Manual trigger for ETL. Protected with a simple header token.
+    Also updates the last_run timestamp when successful.
+    """
     if ETL_TOKEN and x_etl_token != ETL_TOKEN:
         raise HTTPException(status_code=401, detail="bad token")
 
@@ -227,11 +321,16 @@ def etl_run(x_etl_token: str = Header(default="")):
 
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
+        ok = (p.returncode == 0)
+        if ok:
+            _write_last_run_now()
+
         return {
-            "ok": p.returncode == 0,
+            "ok": ok,
             "returncode": p.returncode,
             "stdout_tail": _tail(p.stdout),
             "stderr_tail": _tail(p.stderr),
+            "last_run": _read_last_run_iso(ETL_LAST_RUN_FILE),
         }
     except subprocess.TimeoutExpired as e:
         return {
@@ -260,7 +359,6 @@ def call_ollama_for_sql(question: str) -> str:
         "stream": False
     }
     r = requests.post(url, json=payload, timeout=120)
-    # If Ollama returns non-200, expose the text for easier debugging
     if r.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Ollama error {r.status_code}: {r.text[:300]}")
     data = r.json()
@@ -269,7 +367,8 @@ def call_ollama_for_sql(question: str) -> str:
 
 def extract_sql(text: str) -> str:
     """
-    Extract the SQL from model output (handles code fences or plain text).
+    Extract the SQL from model output (handles code fences or plain text),
+    then enforce that it is a single SELECT statement.
     """
     m = re.search(r"```(?:sql)?\s*(.*?)```", text, re.DOTALL | re.IGNORECASE)
     if m:
@@ -278,7 +377,6 @@ def extract_sql(text: str) -> str:
         semi = text.find(";")
         sql = text[:semi+1].strip() if semi != -1 else text.strip()
 
-    # enforce SELECT-only
     if DENYLIST.search(sql):
         raise HTTPException(status_code=400, detail="Generated SQL contains non-SELECT statements. Aborting.")
     if not re.match(r"^\s*SELECT\b", sql, re.IGNORECASE):
@@ -307,21 +405,23 @@ def run_sql(sql: str):
 # -------------------------
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest):
-    # 1) ask LLM for SQL
+    """
+    Main NL → SQL endpoint.
+    - Sends the question + schema hint to the local LLM (Ollama)
+    - Validates and executes the generated SQL
+    - Optionally returns a pre-built chart payload for SSH failed vs success
+    """
     raw = call_ollama_for_sql(req.question)
     sql = extract_sql(raw)
 
-    # 2) add LIMIT if missing (protect huge scans)
     if re.search(r"\bLIMIT\b", sql, re.IGNORECASE) is None:
         sql = f"{sql.rstrip(';')} LIMIT {MAX_ROWS};"
 
-    # 3) run
     try:
         rows, latency_ms = run_sql(sql)
     except psycopg2.Error as e:
         raise HTTPException(status_code=400, detail=f"SQL execution error: {e.pgerror or str(e)}")
 
-    # 4) Optional chart when user asks for comparison/percentages/graphs for SSH
     chart = None
     if _wants_chart(req.question):
         chart = _build_failed_success_chart_from_rows(rows)
@@ -333,6 +433,9 @@ def ask(req: AskRequest):
 # -------------------------
 @app.get("/healthz")
 def health():
+    """
+    Simple DB health check for debugging.
+    """
     try:
         rows, _ = run_sql("SELECT 1 as ok;")
         return {"ok": True, "db": rows[0]["ok"] == 1}
@@ -340,42 +443,90 @@ def health():
         return {"ok": False, "error": str(e)}
 
 # ---------------------------------------------------------
-# Show Last Updated Time
-# ----------------------------------------------------------
-from datetime import datetime, timedelta, timezone
-
-def _read_last_run_iso(path: str) -> str | None:
-    try:
-        with open(path, "r") as f:
-            s = f.read().strip()
-            # accept either ISO with/without tz
-            try:
-                return datetime.fromisoformat(s).astimezone(timezone.utc).isoformat()
-            except Exception:
-                return None
-    except FileNotFoundError:
-        return None
-    except Exception:
-        return None
-
-def _next_run_iso(now_utc: datetime | None = None) -> str:
-    """
-    For CRON_SPEC '0 * * * *', next run = top of next hour.
-    If you later change CRON_SPEC, update this function accordingly.
-    """
-    now_utc = now_utc or datetime.now(timezone.utc)
-    nxt = (now_utc.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
-    return nxt.isoformat()
-
+# ETL status (last/next run)
+# ---------------------------------------------------------
 @app.get("/etl/status")
 def etl_status():
+    """
+    Return last ETL run time + next scheduled run (based on CRON_SPEC).
+    Used by the UI to show 'Last updated' and 'Next update'.
+    """
     server_time = datetime.now(timezone.utc).isoformat()
     last_run = _read_last_run_iso(ETL_LAST_RUN_FILE)
     next_run = _next_run_iso()
     return {
         "server_time": server_time,
-        "last_run": last_run,         # ISO8601 or null if never
-        "next_run": next_run,         # ISO8601 (UTC)
+        "last_run": last_run,
+        "next_run": next_run,
         "cron": CRON_SPEC,
         "last_run_file": ETL_LAST_RUN_FILE,
+    }
+
+# ---------------------------------------------------------
+# Severity distribution stats
+# ---------------------------------------------------------
+def get_severity_distribution(hours: int = 24):
+    """
+    Returns counts of events per severity bucket for the last N hours.
+    """
+    sql = f"""
+        SELECT
+          CASE
+            WHEN rule_level BETWEEN 0 AND 3 THEN 'low'
+            WHEN rule_level BETWEEN 4 AND 6 THEN 'medium'
+            WHEN rule_level BETWEEN 7 AND 9 THEN 'high'
+            WHEN rule_level >= 10        THEN 'critical'
+            ELSE 'unknown'
+          END AS severity,
+          COUNT(*) AS count
+        FROM logs
+        WHERE ts >= now() - interval '{hours} hours'
+        GROUP BY 1
+        ORDER BY count DESC;
+    """
+    rows, _ = run_sql(sql)
+    labels = [r["severity"] for r in rows]
+    values = [int(r["count"]) for r in rows]
+    total = sum(values) or 1
+    percentages = [round(v * 100.0 / total, 2) for v in values]
+    return {
+        "sql": sql,
+        "labels": labels,
+        "values": values,
+        "percentages": percentages,
+    }
+
+@app.get("/stats/severity")
+def stats_severity(hours: int = Query(24, ge=1, le=168)):
+    """
+    API to get severity distribution for the last N hours (default 24).
+    """
+    try:
+        data = get_severity_distribution(hours=hours)
+        return {"ok": True, **data}
+    except psycopg2.Error as e:
+        raise HTTPException(status_code=400, detail=f"SQL error: {e.pgerror or str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ---------------------------------------------------------
+# Filter metadata endpoints (for dropdowns)
+# ---------------------------------------------------------
+@app.get("/filters/agents")
+def filters_agents():
+    """
+    Returns distinct agent_name values from logs.
+    Used by the UI to build the Agent filter dropdown dynamically.
+    """
+    sql = """
+        SELECT DISTINCT agent_name
+        FROM logs
+        WHERE agent_name IS NOT NULL
+        ORDER BY agent_name;
+    """
+    rows, _ = run_sql(sql)
+    agents = [r["agent_name"] for r in rows]
+    return {
+        "ok": True,
+        "agents": agents,
     }

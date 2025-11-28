@@ -17,21 +17,53 @@ body{
   color:var(--fg);
 }
 
+/* Layout shell */
 .wrap{
   max-width:1200px;
   margin:0 auto;
-  padding:28px 20px 64px;
+  padding:24px 16px 56px;
 }
 
-h1{
-  margin:0 0 8px;
+/* Header with logo + title */
+/* Header layout */
+.header {
+  margin-bottom: 20px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;     /* <-- Aligns logo + text vertically */
+  gap: 20px;
+  flex-wrap: wrap;         /* Responsive for mobile */
+}
+
+/* Logo placement */
+.app-logo {
+  width: 90px;             /* Adjust size */
+  height: auto;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 6px 16px rgba(0,0,0,.4);
+}
+
+/* Ensure proper spacing for title */
+.brand-text h1 {
+  margin: 0 0 6px;
+  font-weight: 800;
+  letter-spacing: .3px;
+}
+
+
+.brand-text h1{
+  margin:0 0 6px;
   font-weight:800;
   letter-spacing:.3px;
 }
-
 .sub{
   color:var(--muted);
-  margin-bottom:18px;
+  margin:0;
+  max-width:720px;
+  font-size:.95rem;
 }
 
 /* Main card */
@@ -51,12 +83,14 @@ h1{
   grid-template-columns: 1fr;
   gap:16px;
 }
+
+/* Desktop: two columns, charts full width */
 @media(min-width:1024px){
   .grid{
     grid-template-columns: 1.05fr .95fr;
   }
   .charts-span-2{
-    grid-column: 1 / -1; /* charts card spans full width on desktop */
+    grid-column: 1 / -1;
   }
 }
 
@@ -133,7 +167,7 @@ textarea{
 
 /* Fetch + Reset with special colours */
 .btn-fetch {
-  background: linear-gradient(135deg, #22c55e, #16a34a); /* green shades */
+  background: linear-gradient(135deg, #22c55e, #16a34a);
   color: #0b1020;
   font-weight: 700;
   padding:10px 14px;
@@ -146,7 +180,7 @@ textarea{
 }
 
 .btn-reset {
-  background: linear-gradient(135deg, #ef4444, #b91c1c); /* red shades */
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
   color: #fff;
   font-weight: 700;
   padding:10px 14px;
@@ -185,7 +219,7 @@ textarea{
   to { opacity: 1; }
 }
 
-/* Filter row (Agent, Time, Severity) */
+/* Filter row (Agent, Severity) */
 .filter-row{
   display:flex;
   flex-wrap:wrap;
@@ -252,6 +286,15 @@ pre{
   overflow:auto;
 }
 
+/* Make table horizontally scrollable on small screens */
+.table-wrap{
+  width:100%;
+  overflow-x:auto;
+}
+.table-wrap table{
+  width:100%;
+}
+
 table{
   width:100%;
   border-collapse:collapse;
@@ -297,9 +340,10 @@ canvas{
   border:1px solid var(--brd);
   border-radius:14px;
   padding:8px;
-  height:360px !important; /* bigger chart */
+  height:360px !important;
 }
 
+/* Status badges */
 .badge{
   display:inline-block;
   padding:3px 10px;
@@ -322,4 +366,23 @@ canvas{
 #fetchMsg{
   min-height:1.2em;
   display:inline-block;
+}
+
+/* Small-screen tweaks */
+@media(max-width:640px){
+  .wrap{
+    padding:20px 12px 48px;
+  }
+  .brand{
+    align-items:flex-start;
+  }
+  .brand-text h1{
+    font-size:1.2rem;
+  }
+  textarea{
+    min-height:120px;
+  }
+  canvas{
+    height:300px !important;
+  }
 }

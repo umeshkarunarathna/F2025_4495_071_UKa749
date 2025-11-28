@@ -6,7 +6,7 @@
   <title>SOC Assistant — Query & Charts</title>
 
   <!-- Main styles -->
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/styles.css?v=2">
 
   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -16,10 +16,20 @@
   <script src="script/app.js?v=5" defer></script>
 
   <div class="wrap">
-    <h1>LLM-Powered SOC Assistant</h1>
-    <div class="sub">
-      Ask in natural language. We’ll generate SQL, show rows, and render charts when your prompt asks for them.
+    <!-- Header with logo + title -->
+    
+<header class="header">
+  <div class="brand">
+    <img src="assets/soc-logo.png" class="app-logo" alt="SOC Assistant Logo">
+
+    <div class="brand-text">
+      <h1>LLM-Powered SOC Assistant</h1>
+      <div class="sub">
+        Ask in natural language. We’ll generate SQL, show rows, and render charts when you asks for them.
+      </div>
     </div>
+  </div>
+</header>
 
     <!-- Query + Controls Card -->
     <div class="card section">
@@ -55,7 +65,7 @@
         </div>
       </div>
 
-      <!-- NEW: Filter row (Agent, Time frame, Severity) -->
+      <!-- Filter row (Agent, Severity) -->
       <div class="filter-row">
         <div class="filter-group">
           <label for="agentFilter" class="filter-label">Agent</label>
@@ -104,7 +114,7 @@
         <h3>Generated SQL</h3>
         <pre id="sql" class="muted">—</pre>
         <h3 style="margin-top:10px;">Rows</h3>
-        <div id="rows">—</div>
+        <div id="rows" class="table-wrap">—</div>
       </div>
 
       <!-- Charts (full width on desktop via charts-span-2) -->

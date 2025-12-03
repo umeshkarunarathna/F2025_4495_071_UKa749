@@ -1,14 +1,15 @@
-import os
-import subprocess
-import re
-import json
-import time
-import requests
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from fastapi import FastAPI, HTTPException, Header, Query
-from pydantic import BaseModel
-from dotenv import load_dotenv
+import os              # Interact with the operating system (env vars, file paths)
+import subprocess      # Run external system commands or shell commands
+import re              # Regular expressions for pattern matching and text extraction
+import json            # JSON encode/decode for API responses and data handling
+import time            # Time utilities (sleep, timestamps, delays)
+import requests        # Send HTTP requests to external APIs/services
+import psycopg2        # PostgreSQL database connector
+from psycopg2.extras import RealDictCursor   # Return SQL rows as dictionaries instead of tuples
+from fastapi import FastAPI, HTTPException, Header, Query  # FastAPI app, error handling, headers, query params
+from pydantic import BaseModel      # Data validation models for request/response schemas
+from dotenv import load_dotenv      # Load environment variables from a .env file
+
 
 from datetime import datetime, timedelta, timezone
 
